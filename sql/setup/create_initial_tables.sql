@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS documents (
+CREATE TABLE IF NOT EXISTS wh.documents (
     id                 SERIAL PRIMARY KEY,
     admin              TEXT NOT NULL,              -- e.g. 'biden'
     source_site        TEXT NOT NULL,              -- e.g. 'bidenwhitehouse.archives.gov'
@@ -22,15 +22,15 @@ CREATE TABLE IF NOT EXISTS documents (
 
 -- Fast filtering by scrape state
 CREATE INDEX IF NOT EXISTS idx_documents_scrape_status
-    ON documents (scrape_status);
+    ON wh.documents (scrape_status);
 
 -- Fast filtering / sorting by date
 CREATE INDEX IF NOT EXISTS idx_documents_date_published
-    ON documents (date_published);
+    ON wh.documents (date_published);
 
-CREATE TABLE IF NOT EXISTS document_chunks (
+CREATE TABLE IF NOT EXISTS wh.document_chunks (
     id           SERIAL PRIMARY KEY,
-    document_id  INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    document_id  INTEGER NOT NULL REFERENCES wh.documents(id) ON DELETE CASCADE,
     chunk_index  INTEGER NOT NULL,     -- 0, 1, 2, ...
     text         TEXT NOT NULL,        -- the chunk of transcript text
 
@@ -45,4 +45,4 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_document_chunks_document_id
-    ON document_chunks (document_id);
+    ON wh.document_chunks (document_id);

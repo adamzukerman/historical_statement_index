@@ -1,2 +1,5 @@
 DESIGN_full.md
 .venv
+.env
+*DS_Store
+*__pycache__*
