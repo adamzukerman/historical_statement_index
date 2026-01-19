@@ -71,3 +71,11 @@ Populated by:
 Usage:
 
 - Monitoring, diagnostics, or sanity checks (e.g., “Has the scraper updated anything lately?”).
+
+---
+
+## Views
+
+### `wh.document_status_overview`
+
+Shows the number of `wh.documents` rows per administration and scrape status. Helpful for spotting how many links are pending, scraped, or errored for each admin.
