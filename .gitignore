@@ -3,3 +3,5 @@ DESIGN_full.md
 .env
 *DS_Store
 *__pycache__*
+build
+*.egg-info*

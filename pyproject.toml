@@ -13,3 +13,5 @@ dependencies = [
     "requests>=2.32.5",
     "flask>=3.1.2",
 ]
+[tool.setuptools.package-data]
+"wh_scraper.web" = ["templates/*.html", "static/*.css", "static/*.js"]
