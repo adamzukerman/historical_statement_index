@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="filters">
+    <form method="get" class="filter-form">
+      <div class="filter-control">
+        <label for="admin-select">Administration</label>
+        <select id="admin-select" name="admin" onchange="this.form.submit()">
+          <option value="" {% if not admin_filter %}selected{% endif %}>All</option>
+          {% for admin in admins %}
+            <option value="{{ admin }}" {% if admin_filter == admin %}selected{% endif %}>
+              {{ admin }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="filter-control">
+        <label for="status-select">Status</label>
+        <select id="status-select" name="status" onchange="this.form.submit()">
+          <option value="" {% if not status_filter %}selected{% endif %}>All</option>
+          {% for status in statuses %}
+            <option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>
+              {{ status }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <input type="hidden" name="page" value="1" />
+    </form>
+    <p class="filters-summary">
+      Showing {{ documents|length }} of {{ total_count }} documents.
+    </p>
+  </section>
+
+  <section class="documents-layout">
+    <div class="list-panel">
+      {% if documents %}
+        <ol class="document-list">
+          {% for doc in documents %}
+            <li>
+              <button
+                type="button"
+                class="document-link"
+                data-document-id="{{ doc.id }}"
+              >
+                <span class="doc-title">{{ doc.title or "Untitled briefing" }}</span>
+                <span class="doc-meta">
+                  {{ doc.date_published or "Unknown date" }} · {{ doc.admin }} · {{ doc.scrape_status }}
+                </span>
+              </button>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p class="empty-state">No documents match the selected filters.</p>
+      {% endif %}
+
+      <div class="pagination">
+        {% set prev_page = page - 1 %}
+        {% set next_page = page + 1 %}
+        {% if page > 1 %}
+          <a
+            href="{{ url_for('documents', admin=admin_filter, status=status_filter, page=prev_page) }}"
+            class="page-link"
+            >← Previous</a
+          >
+        {% else %}
+          <span class="page-link disabled">← Previous</span>
+        {% endif %}
+        <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+          <a
+            href="{{ url_for('documents', admin=admin_filter, status=status_filter, page=next_page) }}"
+            class="page-link"
+            >Next →</a
+          >
+        {% else %}
+          <span class="page-link disabled">Next →</span>
+        {% endif %}
+      </div>
+    </div>
+    <article id="document-detail" class="detail-panel">
+      <p>Select a briefing to load its transcript.</p>
+    </article>
+  </section>
+{% endblock %}

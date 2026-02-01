@@ -31,6 +31,32 @@ class DocumentPending:
     url: str
 
 
+@dataclass
+class DocumentSummary:
+    """Lightweight projection for listing documents."""
+
+    id: int
+    admin: str
+    title: Optional[str]
+    date_published: Optional[date]
+    scrape_status: str
+
+
+@dataclass
+class DocumentDetail:
+    """Full information needed to render a document page."""
+
+    id: int
+    admin: str
+    title: Optional[str]
+    url: str
+    date_published: Optional[date]
+    datetime_published: Optional[datetime]
+    location: Optional[str]
+    clean_text: Optional[str]
+    scrape_status: str
+
+
 class DocumentRepository:
     """Encapsulates reads/writes to the `wh.documents` table."""
 
@@ -139,3 +165,128 @@ class DocumentRepository:
 
         with get_cursor(commit=True) as cur:
             cur.execute(query, (error[:1024], document_id))
+
+    def list_documents(
+        self,
+        *,
+        admin: Optional[str],
+        scrape_status: Optional[str],
+        limit: int,
+        offset: int = 0,
+    ) -> List[DocumentSummary]:
+        base_query = [
+            """
+            SELECT id, admin, title, date_published, scrape_status
+            FROM wh.documents
+            """
+        ]
+        conditions = []
+        params: List[object] = []
+
+        if admin:
+            conditions.append("admin = %s")
+            params.append(admin)
+        if scrape_status:
+            conditions.append("scrape_status = %s")
+            params.append(scrape_status)
+
+        if conditions:
+            base_query.append("WHERE " + " AND ".join(conditions))
+
+        base_query.append("ORDER BY date_published DESC NULLS LAST, id DESC")
+        base_query.append("LIMIT %s OFFSET %s")
+        params.extend([limit, offset])
+
+        query = "\n".join(base_query)
+
+        with get_cursor(dict_cursor=True) as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+
+        return [
+            DocumentSummary(
+                id=row["id"],
+                admin=row["admin"],
+                title=row["title"],
+                date_published=row["date_published"],
+                scrape_status=row["scrape_status"],
+            )
+            for row in rows
+        ]
+
+    def count_documents(
+        self,
+        *,
+        admin: Optional[str],
+        scrape_status: Optional[str],
+    ) -> int:
+        query = ["SELECT COUNT(*) FROM wh.documents"]
+        conditions = []
+        params: List[object] = []
+
+        if admin:
+            conditions.append("admin = %s")
+            params.append(admin)
+        if scrape_status:
+            conditions.append("scrape_status = %s")
+            params.append(scrape_status)
+
+        if conditions:
+            query.append("WHERE " + " AND ".join(conditions))
+
+        sql_query = "\n".join(query)
+
+        with get_cursor() as cur:
+            cur.execute(sql_query, params or None)
+            (total,) = cur.fetchone()
+
+        return total
+
+    def list_admins(self) -> List[str]:
+        query = "SELECT DISTINCT admin FROM wh.documents ORDER BY admin;"
+        with get_cursor() as cur:
+            cur.execute(query)
+            rows = cur.fetchall()
+        return [row[0] for row in rows]
+
+    def list_statuses(self) -> List[str]:
+        query = "SELECT DISTINCT scrape_status FROM wh.documents ORDER BY scrape_status;"
+        with get_cursor() as cur:
+            cur.execute(query)
+            rows = cur.fetchall()
+        return [row[0] for row in rows]
+
+    def get_document(self, document_id: int) -> Optional[DocumentDetail]:
+        query = """
+            SELECT
+                id,
+                admin,
+                title,
+                url,
+                date_published,
+                datetime_published,
+                location,
+                clean_text,
+                scrape_status
+            FROM wh.documents
+            WHERE id = %s;
+        """
+
+        with get_cursor(dict_cursor=True) as cur:
+            cur.execute(query, (document_id,))
+            row = cur.fetchone()
+
+        if not row:
+            return None
+
+        return DocumentDetail(
+            id=row["id"],
+            admin=row["admin"],
+            title=row["title"],
+            url=row["url"],
+            date_published=row["date_published"],
+            datetime_published=row["datetime_published"],
+            location=row["location"],
+            clean_text=row["clean_text"],
+            scrape_status=row["scrape_status"],
+        )
