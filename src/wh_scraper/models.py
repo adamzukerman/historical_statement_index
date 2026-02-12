@@ -60,6 +60,11 @@ class DocumentDetail:
 class DocumentRepository:
     """Encapsulates reads/writes to the `wh.documents` table."""
 
+    @staticmethod
+    def _vector_literal(values: Sequence[float]) -> str:
+        formatted = ", ".join(f"{value:.8f}" for value in values)
+        return f"[{formatted}]"
+
     def upsert_listings(self, rows: Sequence[DocumentListing]) -> int:
         if not rows:
             return 0
@@ -290,3 +295,201 @@ class DocumentRepository:
             clean_text=row["clean_text"],
             scrape_status=row["scrape_status"],
         )
+
+    def list_documents_without_chunks(self, limit: int) -> List[DocumentForChunking]:
+        query = """
+            SELECT
+                d.id,
+                d.title,
+                d.clean_text
+            FROM wh.documents d
+            WHERE d.clean_text IS NOT NULL
+              AND d.clean_text <> ''
+              AND NOT EXISTS (
+                  SELECT 1 FROM wh.document_chunks c WHERE c.document_id = d.id
+              )
+            ORDER BY d.id
+            LIMIT %s;
+        """
+
+        with get_cursor(dict_cursor=True) as cur:
+            cur.execute(query, (limit,))
+            rows = cur.fetchall()
+
+        return [
+            DocumentForChunking(
+                id=row["id"],
+                title=row["title"],
+                clean_text=row["clean_text"],
+            )
+            for row in rows
+        ]
+
+    def insert_document_chunks(self, *, document_id: int, chunks: Sequence[str]) -> int:
+        if not chunks:
+            return 0
+
+        values = [
+            (
+                document_id,
+                index,
+                chunk,
+            )
+            for index, chunk in enumerate(chunks)
+        ]
+
+        insert_sql = """
+            INSERT INTO wh.document_chunks (document_id, chunk_index, text)
+            VALUES %s
+            ON CONFLICT (document_id, chunk_index) DO UPDATE SET
+                text = EXCLUDED.text,
+                embedding = NULL,
+                embedding_model = NULL,
+                embedding_dimensions = NULL,
+                embedding_updated_at = NULL,
+                updated_at = NOW();
+        """
+
+        with get_cursor(commit=True) as cur:
+            execute_values(cur, insert_sql, values)
+
+        return len(values)
+
+    def list_chunks_without_embeddings(self, limit: int) -> List[ChunkForEmbedding]:
+        query = """
+            SELECT
+                id,
+                document_id,
+                chunk_index,
+                text
+            FROM wh.document_chunks
+            WHERE embedding IS NULL
+            ORDER BY id
+            LIMIT %s;
+        """
+
+        with get_cursor(dict_cursor=True) as cur:
+            cur.execute(query, (limit,))
+            rows = cur.fetchall()
+
+        return [
+            ChunkForEmbedding(
+                id=row["id"],
+                document_id=row["document_id"],
+                chunk_index=row["chunk_index"],
+                text=row["text"],
+            )
+            for row in rows
+        ]
+
+    def update_chunk_embedding(
+        self,
+        *,
+        chunk_id: int,
+        embedding: Sequence[float],
+        embedding_model: str,
+        embedding_dimensions: int,
+    ) -> None:
+        query = """
+            UPDATE wh.document_chunks
+            SET
+                embedding = %s,
+                embedding_model = %s,
+                embedding_dimensions = %s,
+                embedding_updated_at = NOW(),
+                updated_at = NOW()
+            WHERE id = %s;
+        """
+        embedding_literal = self._vector_literal(embedding)
+
+        with get_cursor(commit=True) as cur:
+            cur.execute(
+                query,
+                (
+                    embedding_literal,
+                    embedding_model,
+                    embedding_dimensions,
+                    chunk_id,
+                ),
+            )
+
+    def search_chunks_by_embedding(
+        self,
+        *,
+        embedding: Sequence[float],
+        limit: int,
+    ) -> List[SearchResult]:
+        if limit <= 0:
+            return []
+
+        embedding_literal = self._vector_literal(embedding)
+        query = """
+            SELECT
+                c.id AS chunk_id,
+                c.document_id,
+                c.chunk_index,
+                c.text,
+                (c.embedding <=> %s) AS distance,
+                d.title,
+                d.url,
+                d.date_published,
+                d.admin
+            FROM wh.document_chunks c
+            JOIN wh.documents d ON d.id = c.document_id
+            WHERE c.embedding IS NOT NULL
+            ORDER BY c.embedding <=> %s
+            LIMIT %s;
+        """
+
+        with get_cursor(dict_cursor=True) as cur:
+            cur.execute(query, (embedding_literal, embedding_literal, limit))
+            rows = cur.fetchall()
+
+        return [
+            SearchResult(
+                chunk_id=row["chunk_id"],
+                document_id=row["document_id"],
+                chunk_index=row["chunk_index"],
+                score=row["distance"],
+                text=row["text"],
+                title=row["title"],
+                url=row["url"],
+                date_published=row["date_published"],
+                admin=row["admin"],
+            )
+            for row in rows
+        ]
+
+
+@dataclass
+class DocumentForChunking:
+    """Minimal payload used when generating document chunks."""
+
+    id: int
+    title: Optional[str]
+    clean_text: str
+
+
+@dataclass
+class ChunkForEmbedding:
+    """Represents a chunk row awaiting an embedding."""
+
+    id: int
+    document_id: int
+    chunk_index: int
+    text: str
+
+
+@dataclass
+class SearchResult:
+    """Represents the outcome of a semantic search query."""
+
+    chunk_id: int
+    document_id: int
+    chunk_index: int
+    score: float
+    text: str
+    title: Optional[str]
+    url: str
+    date_published: Optional[date]
+    admin: str

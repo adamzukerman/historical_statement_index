@@ -36,7 +36,7 @@ Usage:
 
 ### `wh.document_chunks`
 
-Future-ready for vectorization. Represents chunks of a document.
+Represents chunks of a document plus their vector embeddings.
 
 Key columns:
 
@@ -44,12 +44,15 @@ Key columns:
 - `document_id` – FK → `wh.documents(id)`
 - `chunk_index` – 0-based order of chunks per document
 - `text` – chunk of the transcript
+- `embedding` – pgvector column (currently 1536 dims)
+- `embedding_model` / `embedding_dimensions` – metadata about the embedding
+- `embedding_updated_at` – when the vector was last refreshed
 - `created_at` / `updated_at`
 
 Usage:
 
-- Later, we will add an `embedding` column here.
-- Each document will be split into multiple chunks for semantic search.
+- Each document is split into multiple chunks for semantic search.
+- ANN index (`ivfflat`) enables fast cosine-similarity retrieval.
 
 ---
 
