@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-from typing import Iterable
+from pathlib import Path
+from typing import Iterable, Sequence
 
 from .models import DocumentRepository, SearchResult
 from .vectorization import OpenAIEmbeddingClient
@@ -53,7 +54,63 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=5,
         help="Number of chunks to return",
     )
+    parser.add_argument(
+        "--to-file",
+        metavar="NAME",
+        help="Optional base filename to write full chunk text to under searches/",
+    )
+    parser.add_argument(
+        "--separating-lines",
+        type=int,
+        default=2,
+        help="Number of blank lines between chunks in the output file (default: 2)",
+    )
+    parser.add_argument(
+        "--separating-char",
+        metavar="CHAR",
+        help="Optional single, non-whitespace character used as a separator line",
+    )
     return parser
+
+
+def write_results_to_file(
+    results: Sequence[SearchResult],
+    target_name: str,
+    separating_lines: int,
+    separating_char: str | None,
+) -> Path:
+    """Persist raw chunk text to searches/<name>.txt with configurable spacing."""
+
+    cleaned_name = target_name.strip()
+    if not cleaned_name:
+        raise ValueError("--to-file name cannot be empty")
+
+    safe_name = Path(cleaned_name).name
+    if not safe_name:
+        raise ValueError("--to-file name cannot be empty")
+
+    if not safe_name.lower().endswith(".txt"):
+        safe_name = f"{safe_name}.txt"
+
+    project_root = Path(__file__).resolve().parents[2]
+    output_dir = project_root / "searches"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / safe_name
+
+    line_breaks = "\n" * max(separating_lines, 0)
+    separator_parts = ["\n"]
+    if line_breaks:
+        separator_parts.append(line_breaks)
+    if separating_char:
+        separator_parts.append(separating_char * 80)
+        separator_parts.append("\n")
+    separator = "".join(separator_parts)
+    chunk_text = separator.join(result.text.strip() for result in results)
+    if chunk_text and not chunk_text.endswith("\n"):
+        chunk_text += "\n"
+
+    output_path.write_text(chunk_text, encoding="utf-8")
+    return output_path
 
 
 def main(argv: Iterable[str] | None = None) -> None:
@@ -67,6 +124,13 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     if args.limit < 1:
         parser.error("--limit must be >= 1")
+    if args.separating_lines < 0:
+        parser.error("--separating-lines must be >= 0")
+    if args.separating_char is not None:
+        if len(args.separating_char) != 1:
+            parser.error("--separating-char must be a single character")
+        if args.separating_char.isspace():
+            parser.error("--separating-char cannot be whitespace")
 
     try:
         results = search(args.query, limit=args.limit)
@@ -81,6 +145,20 @@ def main(argv: Iterable[str] | None = None) -> None:
     for index, result in enumerate(results, start=1):
         print(format_result(result, index))
         print()
+
+    if args.to_file:
+        try:
+            path = write_results_to_file(
+                results,
+                args.to_file,
+                args.separating_lines,
+                args.separating_char,
+            )
+        except Exception as exc:  # pragma: no cover - CLI level guard
+            LOGGER.error("Unable to write results to file: %s", exc)
+            raise SystemExit(1) from exc
+        relative_path = path.relative_to(Path(__file__).resolve().parents[2])
+        print(f"Wrote {len(results)} chunks to {relative_path}")
 
 
 if __name__ == "__main__":
