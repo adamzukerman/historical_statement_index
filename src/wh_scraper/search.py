@@ -78,8 +78,11 @@ def write_results_to_file(
     target_name: str,
     separating_lines: int,
     separating_char: str | None,
+    *,
+    query: str,
+    limit: int,
 ) -> Path:
-    """Persist raw chunk text to searches/<name>.txt with configurable spacing."""
+    """Persist raw chunk text plus metadata to searches/<name>.txt."""
 
     cleaned_name = target_name.strip()
     if not cleaned_name:
@@ -105,11 +108,38 @@ def write_results_to_file(
         separator_parts.append(separating_char * 80)
         separator_parts.append("\n")
     separator = "".join(separator_parts)
-    chunk_text = separator.join(result.text.strip() for result in results)
+    # Convert distances (0 = identical) to cosine similarities (1 = identical) for reporting.
+    cosine_scores = [1 - result.score for result in results]
+    max_similarity = max(cosine_scores, default=0.0)
+    min_similarity = min(cosine_scores, default=0.0)
+    unique_documents = len({result.document_id for result in results})
+    metadata_lines = [
+        f"Query: {query}",
+        f"Limit: {limit}",
+        f"Max cosine similarity: {max_similarity:.4f}",
+        f"Min cosine similarity: {min_similarity:.4f}",
+        f"Unique documents: {unique_documents}",
+    ]
+    metadata = "\n".join(metadata_lines).rstrip("\n") + "\n\n"
+
+    chunk_sections = []
+    for result in results:
+        date_value = result.date_published.isoformat() if result.date_published else "Unknown"
+        section_lines = [
+            f"Title: {result.title or 'Untitled'}",
+            f"Date published: {date_value}",
+            f"Document ID: {result.document_id}",
+            f"Document URL: {result.url}",
+            "",
+            result.text.strip(),
+        ]
+        chunk_sections.append("\n".join(section_lines).rstrip())
+
+    chunk_text = separator.join(chunk_sections)
     if chunk_text and not chunk_text.endswith("\n"):
         chunk_text += "\n"
 
-    output_path.write_text(chunk_text, encoding="utf-8")
+    output_path.write_text(metadata + chunk_text, encoding="utf-8")
     return output_path
 
 
@@ -153,6 +183,8 @@ def main(argv: Iterable[str] | None = None) -> None:
                 args.to_file,
                 args.separating_lines,
                 args.separating_char,
+                query=args.query,
+                limit=args.limit,
             )
         except Exception as exc:  # pragma: no cover - CLI level guard
             LOGGER.error("Unable to write results to file: %s", exc)
