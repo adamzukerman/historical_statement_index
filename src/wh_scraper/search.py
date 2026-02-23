@@ -118,6 +118,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Use an LLM to filter ANN matches for higher precision",
     )
     parser.add_argument(
+        "--include-rejected",
+        action="store_true",
+        help="When combined with --advanced and --to-file, append LLM 'NO' chunks after accepted ones",
+    )
+    parser.add_argument(
         "--separating-lines",
         type=int,
         default=2,
@@ -292,7 +297,9 @@ class LLMRelevanceJudge:
             "Respond with a JSON array in the same order as the chunks. "
             "Each array entry must be an object with:\n"
             '{"answer":"YES" or "NO","explanation":"short reason"}\n'
-            "Only answer YES when the chunk is clearly helpful."
+            "Only answer YES when the chunk is clearly helpful. "
+            "If the chunk is clearly helpful, additionally state what part of the query it relates to. "
+            "Keep in mind that if the query is nonsense, then nothing should be helpful to answering the query. "
         )
         sections_text = "\n\n".join(sections)
         return f"{instructions}\n\nQuery:\n{query.strip()}\n\nChunks:\n{sections_text}"
@@ -437,13 +444,23 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     to_write = outputs
     if args.advanced:
-        filtered_outputs = [
+        accepted_outputs = [
             output
             for output in outputs
             if output.judgment and output.judgment.valid_response and output.judgment.response == "YES"
         ]
-        if filtered_outputs:
-            to_write = filtered_outputs
+        rejected_outputs = [
+            output
+            for output in outputs
+            if output.judgment and output.judgment.valid_response and output.judgment.response == "NO"
+        ]
+        if accepted_outputs:
+            to_write = accepted_outputs[:]
+            if args.include_rejected and rejected_outputs:
+                to_write += rejected_outputs
+        elif rejected_outputs and args.include_rejected:
+            LOGGER.warning("LLM rejected every chunk; writing only rejected results.")
+            to_write = rejected_outputs
         else:
             LOGGER.warning("LLM rejected all chunks or responses invalid; writing ANN results instead.")
 

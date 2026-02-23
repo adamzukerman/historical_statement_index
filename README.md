@@ -67,3 +67,40 @@ python -m wh_scraper.scrape --limit 100000
    ```
 
    Results show chunk metadata (title, admin, date, URL) plus a snippet sorted by cosine similarity.
+
+### Advanced search (LLM-assisted filtering)
+
+- Optional environment variables for the relevance judge:
+
+  ```
+  OPENAI_RELEVANCE_MODEL=gpt-4o-mini
+  RELEVANCE_BATCH_SIZE=5
+  RELEVANCE_MAX_WORDS=350
+  ```
+
+  These default to reasonable values; override them in `.env` if needed.
+
+- Run the CLI with `--advanced` to keep the ANN search while batching results through an LLM:
+
+  ```bash
+  python -m wh_scraper.search "white house foreign relations" --limit 10 --advanced
+  ```
+
+  Terminal output now includes each chunk’s LLM verdict (YES/NO), validity flag, and explanation.
+
+- Combine `--advanced` and `--to-file` to produce a detailed export. The metadata header summarizes cosine scores plus LLM acceptance/rejection counts, and each section records chunk index, cosine distance, and the LLM response. Adding `--include-rejected` keeps “NO” chunks in the file, appended after the accepted ones so you can review everything.
+
+### Monitoring chunking and embedding progress
+
+Two helper views summarize where scraped documents sit in the chunking/embedding pipeline:
+
+- `wh.document_chunk_activity` (per document + embedding model) lists the minimum/maximum chunk `created_at` and `updated_at` timestamps, making it obvious which scraped documents still lack chunks or haven’t been updated recently.
+- `wh.document_chunk_embedding_summary` aggregates how many scraped documents have zero chunks and how many chunk rows are still missing embeddings.
+
+Create or refresh these views via:
+
+```bash
+psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f sql/setup/create_chunk_embedding_views.sql
+```
+
+(`sql/setup/create_document_status_view.sql` still provides the scrape-status overview.)

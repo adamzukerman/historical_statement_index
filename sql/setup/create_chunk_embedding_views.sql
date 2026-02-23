@@ -1,12 +1,3 @@
-CREATE OR REPLACE VIEW wh.document_status_overview AS
-SELECT
-    admin,
-    scrape_status,
-    COUNT(*) AS document_count
-FROM wh.documents
-GROUP BY admin, scrape_status
-ORDER BY admin, scrape_status;
-
 CREATE OR REPLACE VIEW wh.document_chunk_activity AS
 WITH chunk_stats AS (
     SELECT
