@@ -28,6 +28,9 @@ class Settings:
     openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY") or None
     openai_embedding_model: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     embedding_batch_size: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
+    openai_relevance_model: str = os.getenv("OPENAI_RELEVANCE_MODEL", "gpt-4o-mini")
+    relevance_batch_size: int = int(os.getenv("RELEVANCE_BATCH_SIZE", "5"))
+    relevance_max_words: int = int(os.getenv("RELEVANCE_MAX_WORDS", "350"))
     chunk_max_tokens: int = int(os.getenv("CHUNK_MAX_TOKENS", "400"))
     chunk_overlap_tokens: int = int(os.getenv("CHUNK_OVERLAP_TOKENS", "40"))
 
