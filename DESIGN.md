@@ -277,6 +277,30 @@ Load DB settings from `.env` using python-dotenv.
 
 ------------------------------------------------------------------------
 
+## 7. Phase 2 – Web Search Integration
+
+Scope adds a browser-based surface for the existing semantic search tooling while preserving all current scrape-status functionality.
+
+- **Routes & Endpoints**
+  - `GET /` continues to render the scrape-status dashboard.
+  - New `GET /search` (or tab within `/`) hosts the search UI panel (see `web_interface_overview.md`).
+  - `POST /api/search` provides a JSON contract for both simple and advanced searches (spec detailed in `search_endpoint.md`).
+  - Existing `GET /api/documents/<id>` endpoint is reused for the detail pane regardless of entry point.
+- **Backend orchestration**
+  - Search endpoint delegates to the same repository/services used by the CLI (`wh_scraper.search`) so ANN queries, pgvector usage, and LLM judging stay centralized.
+  - Pagination fixed at 25 per request to keep UI + API behavior aligned.
+  - Administration filter and sort order are implemented server-side to maintain consistent ordering between requests.
+- **Error handling**
+  - Backend returns structured errors consumed by the UI popup; failures in advanced search do not impact the scrape-status route.
+  - Missing OpenAI configuration disables advanced mode and surfaces an informative message via the contract (`advanced_available=false`).
+- **Future hooks**
+  - Placeholder bool for `include_rejected` (defaults false) so we can add rejected-chunk rendering later without breaking the contract.
+  - MVP keeps detail pane chunk-only; a future enhancement may hydrate the full transcript and highlight the chunk server-side.
+
+This section references UI/UX specifics in `web_interface_overview.md` and the request/response schema in `search_endpoint.md`.
+
+------------------------------------------------------------------------
+
 # PART B --- Context, Future Goals, and Notes (Not for Immediate Implementation)
 
 Codex should NOT implement these now but must keep them in context.
