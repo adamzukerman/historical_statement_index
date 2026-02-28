@@ -4,7 +4,7 @@
 
 ------------------------------------------------------------------------
 
-# PART A --- Immediate Engineering Design (Implement This Now)
+# PART A --- Engineering Design (Current Implementation)
 
 ## 1. Project Goal (Phase 1)
 
@@ -29,7 +29,7 @@ The scraper must:
     -   Full transcript text
 3.  Store everything cleanly in PostgreSQL.
 4.  Be idempotent and resumable with **discover** and **scrape** modes.
-5.  Prepare for later vectorization but NOT implement vectorization now.
+5.  Support semantic search via chunking, embeddings, and ANN queries backed by pgvector.
 
 ------------------------------------------------------------------------
 
@@ -50,9 +50,7 @@ The scraper must:
 
 ### Database
 
--   PostgreSQL 15 or 16
-
-No pgvector needed yet.
+-   PostgreSQL 15 or 16 with the [`vector`](https://github.com/pgvector/pgvector) extension (≥ 0.5) enabled. ANN search and cosine distance rely on ivfflat indexes provided by pgvector.
 
 ### Project Layout
 
@@ -122,16 +120,16 @@ Codex should create the following.
 -   index on scrape_status
 -   index on date_published
 
-### Future Tables (DO NOT CREATE YET)
+### Additional Tables
 
--   document_chunks
--   embedding_models
+-   `document_chunks` – stores transcript chunks plus embeddings and metadata used by the semantic-search pipeline.
+-   (Future) `embedding_models` – reserved for richer metadata if we start juggling multiple embedding providers.
 
 ------------------------------------------------------------------------
 
 ## 4. Scraper Architecture
 
-Two modules:
+Four primary modules cover the ingest + retrieval pipeline:
 
 ------------------------------------------------------------------------
 
@@ -201,18 +199,69 @@ Two modules:
 
 ------------------------------------------------------------------------
 
+### C. chunk.py --- Token-Aware Chunking
+
+**Goal:** Split scraped transcripts into overlapping windows suitable for embeddings.
+
+#### Algorithm
+
+1.  Query `wh.documents` for rows that have `clean_text` but no entries in `wh.document_chunks`.
+2.  Use `TextChunker` configured via `CHUNK_MAX_TOKENS` / `CHUNK_OVERLAP_TOKENS` to produce windows using the `cl100k_base` tokenizer.
+3.  Insert each chunk into `wh.document_chunks (document_id, chunk_index, text)`, resetting embedding metadata so re-chunked docs will be re-embedded later.
+4.  Log totals per document and exit when no pending docs remain.
+
+------------------------------------------------------------------------
+
+### D. embed.py --- Embedding Generation
+
+**Goal:** Call OpenAI’s embedding API and persist vectors for chunks that are still missing embeddings.
+
+#### Algorithm
+
+1.  Fetch chunks where `embedding IS NULL`, honoring `--limit`.
+2.  Batch texts according to `EMBEDDING_BATCH_SIZE` and call OpenAI with the configured `OPENAI_EMBEDDING_MODEL`.
+3.  Update each chunk row with the embedding vector literal, model name, dimensions, and `embedding_updated_at`.
+4.  Handle transient API errors defensively (log + retry later).
+
+------------------------------------------------------------------------
+
+### E. search.py --- Semantic & Advanced Search
+
+**Goal:** Provide CLI-based retrieval over the stored vectors, optionally augmented with an LLM relevance judge.
+
+#### Workflow
+
+1.  Embed the user query via the same embedding model.
+2.  Perform an ANN search using pgvector cosine distance (`embedding <=> %s`) against `wh.document_chunks`.
+3.  CLI output shows ranked snippets; optional flags:
+    -   `--to-file` writes metadata + full chunk text under `searches/`.
+    -   `--separating-lines` / `--separating-char` control formatting.
+4.  `--advanced` routes ANN hits through `LLMRelevanceJudge`, which:
+    -   Batches trimmed chunk text.
+    -   Calls a chat model (`OPENAI_RELEVANCE_MODEL`) with JSON-only prompts.
+    -   Emits YES/NO decisions plus explanations for terminal display and file exports.
+
+------------------------------------------------------------------------
+
 ## 5. Resumability & Modes
 
 Codex should allow:
 
-    python -m wh_scraper.discover
-    python -m wh_scraper.scrape --limit=100
+```
+python -m wh_scraper.discover --start-page=1 --end-page=116
+python -m wh_scraper.scrape --limit=100
+python -m wh_scraper.chunk --limit=25
+python -m wh_scraper.embed --limit=200
+python -m wh_scraper.search "example query" --limit=5 [--advanced]
+```
 
 Rules:
 
--   discover never duplicates existing URL rows
--   scrape only touches pending rows
--   safe to kill and resume
+-   discover never duplicates existing URL rows.
+-   scrape only touches pending rows.
+-   chunk and embed only operate on rows missing downstream artifacts so reruns are idempotent.
+-   search tolerates empty databases (returns “No matches” rather than raising).
+-   safe to kill and resume each stage independently.
 
 ------------------------------------------------------------------------
 
@@ -256,21 +305,19 @@ public executive-branch communications.
 
 ------------------------------------------------------------------------
 
-## 2. Vectorization (Later Phase)
+## 2. Vectorization (Current + Future Enhancements)
 
-Future work will:
+Already in place:
 
--   Add document_chunks table
--   Chunk transcripts (300--500 tokens)
--   Compute embeddings using a smaller model (384--768 dims)
--   Store embeddings via pgvector or external vector DB
+-   `document_chunks` table populated by `chunk.py`.
+-   Embedding generation via OpenAI `text-embedding-3-small` (defaults configurable).
+-   pgvector-powered ANN search exposed through `search.py`, including optional LLM-assisted filtering.
 
-Query pipeline:
+Future iterations may:
 
-1.  Embed user query
-2.  ANN search on embeddings
-3.  Return ranked snippets with dates
-4.  Build UI or CLI interface for historical lookup
+-   Experiment with additional embedding models (384–3072 dims) and capture metadata in a dedicated `embedding_models` table.
+-   Integrate RAG-style summarization or question answering layers on top of the retrieved chunks.
+-   Add background workers/queues for continuous chunk/embed refreshes rather than manual CLI runs.
 
 ------------------------------------------------------------------------
 

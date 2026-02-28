@@ -3,28 +3,27 @@
 High-level view of the lightweight browsing experience for stored transcripts.
 
 ```
-┌────────────┐       HTTPS        ┌────────────────────┐      psycopg2      ┌──────────────┐
-│  Browser   │◀──────────────────▶│  FastAPI/Flask app │◀──────────────────▶│ PostgreSQL DB │
-│ (Alpine.js │                    │  (wh_scraper.web)  │                    │  wh.documents │
-│  frontend) │───────────────────▶│  Templates + API   │───────────────────▶│  + views      │
-└────────────┘   AJAX (JSON/HTML) └────────────────────┘   repository layer └──────────────┘
+┌────────────┐        HTTP         ┌────────────────────┐      psycopg2      ┌──────────────┐
+│  Browser   │◀───────────────────▶│  Flask app         │◀──────────────────▶│ PostgreSQL DB │
+│ (vanilla   │   fetch()/HTML      │  (wh_scraper.web)  │                    │  wh.documents │
+│   JS)      │────────────────────▶│  Templates + JSON  │───────────────────▶│  + views      │
+└────────────┘                     └────────────────────┘   repository layer └──────────────┘
 ```
 
 ## Components
 
 - **Browser UI**
   - Filter controls for `admin` and `scrape_status`.
-  - Scrollable list of document titles (paginated).
+  - Scrollable, paginated list of document titles rendered on the server.
   - Detail pane that loads `clean_text` when a title is clicked.
-  - Implemented with server-rendered HTML plus a tiny Alpine.js/vanilla JS helper for dynamic updates.
+  - Implemented with server-rendered HTML plus a tiny vanilla-JS helper (`static/app.js`) that uses `fetch` to load details.
 
 - **Web application (`wh_scraper.web`)**
-  - Runs inside Uvicorn/Gunicorn.
-  - Exposes endpoints:
-    - `GET /documents` – returns filtered list (HTML fragment or JSON).
-    - `GET /documents/{id}` – returns a single document’s metadata + clean text.
-  - Renders templates for initial load and responds to AJAX updates.
-  - Relies on new repository helpers for list/detail queries (reusing `DocumentRepository` connections via `db.py`).
+  - Plain Flask app started via `flask run` (see README for env vars).
+  - Endpoints:
+    - `GET /` – renders the full page (template + filters + list) with pagination handled server-side.
+    - `GET /api/documents/<id>` – returns JSON (`DocumentDetail`) used by the detail pane.
+  - Reuses `DocumentRepository` for list/detail queries and pagination metadata.
 
 - **Database interactions**
   - Reads from `wh.documents` and supporting views such as `wh.document_status_overview`.
@@ -32,13 +31,12 @@ High-level view of the lightweight browsing experience for stored transcripts.
 
 ## Request Flow
 
-1. User loads the page → server renders HTML template plus initial dataset.
-2. Selecting an administration or status triggers an AJAX request to `/documents?admin=biden&status=pending`.
-3. Server fetches rows via repository, returns updated list fragment.
-4. Clicking a title sends `GET /documents/{id}`; response injects title metadata + `clean_text` into detail pane.
+1. User loads `/` → server renders HTML template plus the first page of results based on any filter query params.
+2. Changing filters submits the `<form>` (full reload) so pagination + totals always stay in sync with the server.
+3. Clicking a title triggers `fetch(/api/documents/<id>)`; the JS helper injects the returned JSON into the detail pane and highlights the active list item.
 
 ## Deployment Notes
 
-- Deploy web app alongside existing CLI tools; it shares the same virtual environment.
-- Protect with HTTP auth if exposed publicly (only read access assumed).
-- Optional caching: use HTTP caching headers or a tiny in-memory cache for frequent list queries.
+- Deploy the Flask app alongside the CLI tools (same virtualenv). For production, wrap it in Gunicorn/uwsgi if needed, but `flask run --reload` is enough for local use.
+- Protect with HTTP auth if exposed publicly (read-only data, but DB creds live on the server).
+- Optional caching: rely on PostgreSQL query cache or add a simple in-process cache for the list endpoint if latency becomes an issue.
