@@ -72,7 +72,12 @@ def format_result(output: SearchOutput, index: int) -> str:
     return "\n".join(lines)
 
 
-def search(query: str, *, limit: int) -> list[SearchResult]:
+def search(
+    query: str,
+    *,
+    limit: int,
+    admin_filter: Sequence[str] | None = None,
+) -> list[SearchResult]:
     cleaned = query.strip()
     if not cleaned:
         raise ValueError("Query cannot be empty")
@@ -83,13 +88,22 @@ def search(query: str, *, limit: int) -> list[SearchResult]:
         return []
 
     repo = DocumentRepository()
-    return repo.search_chunks_by_embedding(embedding=batch.vectors[0], limit=limit)
+    return repo.search_chunks_by_embedding(
+        embedding=batch.vectors[0],
+        limit=limit,
+        admins=tuple(admin_filter) if admin_filter else None,
+    )
 
 
-def advanced_search(query: str, *, limit: int) -> list[AdvancedSearchResult]:
+def advanced_search(
+    query: str,
+    *,
+    limit: int,
+    admin_filter: Sequence[str] | None = None,
+) -> list[AdvancedSearchResult]:
     """Run ANN search followed by an LLM-based relevance judge."""
 
-    initial_results = search(query, limit=limit)
+    initial_results = search(query, limit=limit, admin_filter=admin_filter)
     if not initial_results:
         return []
 

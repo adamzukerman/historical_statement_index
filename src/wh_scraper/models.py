@@ -418,12 +418,14 @@ class DocumentRepository:
         *,
         embedding: Sequence[float],
         limit: int,
+        admins: Sequence[str] | None = None,
     ) -> List[SearchResult]:
         if limit <= 0:
             return []
 
         embedding_literal = self._vector_literal(embedding)
-        query = """
+        query_parts = [
+            """
             SELECT
                 c.id AS chunk_id,
                 c.document_id,
@@ -437,12 +439,23 @@ class DocumentRepository:
             FROM wh.document_chunks c
             JOIN wh.documents d ON d.id = c.document_id
             WHERE c.embedding IS NOT NULL
-            ORDER BY c.embedding <=> %s
-            LIMIT %s;
-        """
+            """
+        ]
+        params: list[object] = [embedding_literal]
+
+        if admins:
+            placeholders = ", ".join(["%s"] * len(admins))
+            query_parts.append(f"AND d.admin IN ({placeholders})")
+            params.extend(admins)
+
+        query_parts.append("ORDER BY c.embedding <=> %s")
+        params.append(embedding_literal)
+        query_parts.append("LIMIT %s")
+        params.append(limit)
+        query = "\n".join(query_parts)
 
         with get_cursor(dict_cursor=True) as cur:
-            cur.execute(query, (embedding_literal, embedding_literal, limit))
+            cur.execute(query, params)
             rows = cur.fetchall()
 
         return [

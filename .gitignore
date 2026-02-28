@@ -6,3 +6,4 @@ DESIGN_full.md
 build
 *.egg-info*
 pgvector
+searches

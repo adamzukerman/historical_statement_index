@@ -10,10 +10,28 @@
     <header class="site-header">
       <h1>White House Briefings Browser</h1>
       <p class="site-tagline">Filter by administration and inspect stored transcripts.</p>
+      <nav class="site-nav">
+        <a
+          href="{{ url_for('documents') }}"
+          class="{% if active_tab == 'documents' %}active{% endif %}"
+          >Documents</a
+        >
+        <a
+          href="{{ url_for('search_page') }}"
+          class="{% if active_tab == 'search' %}active{% endif %}"
+          >Search</a
+        >
+      </nav>
     </header>
     <main>
       {% block content %}{% endblock %}
     </main>
+    <div id="error-popup" class="error-popup" hidden>
+      <div class="error-popup__content">
+        <p id="error-popup-message"></p>
+        <button type="button" id="error-popup-close" class="button">Dismiss</button>
+      </div>
+    </div>
     <script src="{{ url_for('static', filename='app.js') }}" defer></script>
   </body>
 </html>

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="search-panel">
+    <form
+      id="search-form"
+      class="search-form"
+      data-page-size="{{ page_size }}"
+      data-advanced-available="{{ 'true' if advanced_available else 'false' }}"
+    >
+      <div class="form-row">
+        <label for="search-query">Query</label>
+        <input
+          type="text"
+          id="search-query"
+          name="query"
+          maxlength="200"
+          placeholder="e.g. national security strategy"
+          required
+        />
+      </div>
+      <div class="form-row mode-row">
+        <span class="label">Mode</span>
+        <label>
+          <input type="radio" name="mode" value="simple" checked />
+          Simple
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="mode"
+            value="advanced"
+            {% if not advanced_available %}disabled{% endif %}
+          />
+          Advanced
+          {% if not advanced_available %}<small>(requires API key)</small>{% endif %}
+        </label>
+      </div>
+      <div class="form-row admin-row">
+        <span class="label">Administrations</span>
+        <div class="checkbox-group">
+          {% if admins %}
+            {% for admin in admins %}
+              <label>
+                <input type="checkbox" name="admin_filter" value="{{ admin }}" />
+                {{ admin }}
+              </label>
+            {% endfor %}
+          {% else %}
+            <p class="empty-state">No administrations found.</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="form-row controls-row">
+        <div>
+          <label for="sort-select">Sort</label>
+          <select id="sort-select" name="sort">
+            <option value="relevance" selected>Relevance</option>
+            <option value="date_desc">Publish date (newest)</option>
+            <option value="date_asc">Publish date (oldest)</option>
+          </select>
+        </div>
+        <div class="toggle disabled" title="Coming soon">
+          <label>
+            <input type="checkbox" id="include-rejected" disabled />
+            Show rejected chunks
+          </label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="button primary">Search</button>
+        <button type="button" class="button" id="search-reset">Reset</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="documents-layout search-layout">
+    <div class="list-panel">
+      <p id="search-summary" class="filters-summary" hidden></p>
+      <div id="search-results-empty" class="empty-state">
+        Enter a query to view relevant transcript chunks.
+      </div>
+      <ol id="search-results" class="document-list" hidden></ol>
+      <div class="pagination" id="search-pagination" hidden>
+        <button type="button" class="page-link" id="search-prev" disabled>← Previous</button>
+        <span class="page-info" id="search-page-info">Page 1 of 1</span>
+        <button type="button" class="page-link" id="search-next" disabled>Next →</button>
+      </div>
+    </div>
+    <article id="search-detail" class="detail-panel">
+      <p>Run a search to load transcript chunks and details here.</p>
+    </article>
+  </section>
+{% endblock %}
